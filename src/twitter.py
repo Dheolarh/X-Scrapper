@@ -98,14 +98,29 @@ class TwitterWatcher:
         
         # Now proceed with search
         print(f"[twitter] Now navigating to search URL: {self.cfg.search_url}")
-        self.driver.get(self.cfg.search_url)
-        try:
-            WebDriverWait(self.driver, self.cfg.explicit_wait).until(
-                EC.visibility_of_element_located((By.CSS_SELECTOR, TWEET_SELECTOR))
-            )
-            print("[twitter] Search page loaded.")
-        except TimeoutException:
-            print("[twitter] Timeout waiting for tweets to appear.")
+        search_load_attempts = 0
+        max_search_load_attempts = 3
+        
+        while search_load_attempts < max_search_load_attempts:
+            search_load_attempts += 1
+            print(f"[twitter] Loading search page (attempt {search_load_attempts}/{max_search_load_attempts})")
+            
+            self.driver.get(self.cfg.search_url)
+            try:
+                WebDriverWait(self.driver, self.cfg.explicit_wait).until(
+                    EC.visibility_of_element_located((By.CSS_SELECTOR, TWEET_SELECTOR))
+                )
+                print("[twitter] Search page loaded successfully.")
+                break  # Success, exit the retry loop
+                
+            except TimeoutException:
+                print(f"[twitter] Timeout waiting for tweets to appear (attempt {search_load_attempts})")
+                if search_load_attempts < max_search_load_attempts:
+                    print("[twitter] Retrying search page load...")
+                    time.sleep(3)  # Wait before retry
+                else:
+                    print("[twitter] Failed to load search page after all attempts.")
+        
         # Save cookies opportunistically
         try:
             sess.save_cookies(self.driver, self.cfg.cookies_path)
@@ -284,10 +299,33 @@ class TwitterWatcher:
         retries = 0
         scroll_attempts = 0
         max_scroll_attempts = 15  # Increased from 5
+        refresh_attempts = 0
+        max_refresh_attempts = 3  # Max times to refresh search page
         
         while len(results) < max_count and retries < 8:  # Increased retry limit
             articles = self.driver.find_elements(By.CSS_SELECTOR, TWEET_SELECTOR)
             print(f"[twitter] Found {len(articles)} tweet articles on page.")
+            
+            # If no tweets found and we haven't scrolled much, try refreshing the search page
+            if len(articles) == 0 and scroll_attempts < 3 and refresh_attempts < max_refresh_attempts:
+                print(f"[twitter] No tweets found on search page. Refreshing... (attempt {refresh_attempts + 1}/{max_refresh_attempts})")
+                refresh_attempts += 1
+                
+                # Refresh the search page
+                self.driver.refresh()
+                time.sleep(5)  # Wait for page to reload
+                
+                # Wait for tweets to appear or timeout
+                try:
+                    WebDriverWait(self.driver, 15).until(
+                        EC.visibility_of_element_located((By.CSS_SELECTOR, TWEET_SELECTOR))
+                    )
+                    print("[twitter] Search page refreshed and tweets loaded.")
+                except TimeoutException:
+                    print("[twitter] Timeout waiting for tweets after refresh. Continuing...")
+                
+                continue  # Restart the loop after refresh
+            
             for art in articles:
                 try:
                     tid = art.get_attribute("data-tweet-id") or art.get_attribute("id") or None
