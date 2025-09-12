@@ -1,15 +1,24 @@
 import re
+import os
 from typing import List, Tuple, Optional
 
 BASE58_RE = r"[1-9A-HJ-NP-Za-km-z]"
 SOL_ADDR_RE = re.compile(rf"\b({BASE58_RE}{{32,44}})\b")
 PUMPFUN_LINK_RE = re.compile(r"https?://pump\.fun/coin/([1-9A-HJ-NP-Za-km-z]{32,44})")
 
-LAUNCH_PHRASES = (
+# Default launch phrases
+DEFAULT_LAUNCH_PHRASES = (
     "coming soon",
     "launching soon", 
     "launch",
 )
+
+def get_launch_phrases():
+    """Get launch phrases from environment or use defaults"""
+    env_keywords = os.getenv('REQUIRED_POST_KEYWORDS')
+    if env_keywords:
+        return [phrase.strip().lower() for phrase in env_keywords.split(',') if phrase.strip()]
+    return DEFAULT_LAUNCH_PHRASES
 
 
 def extract_candidates(text: str) -> Tuple[List[str], List[str]]:
@@ -33,8 +42,9 @@ def extract_candidates(text: str) -> Tuple[List[str], List[str]]:
 
 def contains_launch_phrase(text: str) -> bool:
     """Check if text contains any launch-related phrases"""
+    launch_phrases = get_launch_phrases()
     t = text.lower()
-    return any(phrase in t for phrase in LAUNCH_PHRASES)
+    return any(phrase in t for phrase in launch_phrases)
 
 
 def has_contact_address(text: str) -> bool:

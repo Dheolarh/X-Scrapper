@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web3X - Firefox</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🚀 Web3X Controller</h1>
+      <div class="status-indicator">
+        <span id="status-dot" class="status-dot offline"></span>
+        <span id="status-text">Backend Offline</span>
+      </div>
+    </div>
+
+    <form id="configForm" class="config-form">
+      <div class="section">
+        <h3>📱 Telegram Configuration</h3>
+        <div class="input-group">
+          <label for="telegramBotId">Bot Token</label>
+          <input type="text" id="telegramBotId" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz" required>
+        </div>
+        <div class="input-group">
+          <label for="telegramChatId">Chat ID</label>
+          <input type="text" id="telegramChatId" placeholder="-1001234567890" required>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>🐦 Twitter Configuration</h3>
+        <div class="input-group">
+          <label for="twitterUsername">Username</label>
+          <input type="text" id="twitterUsername" placeholder="your_username" required>
+        </div>
+        <div class="input-group">
+          <label for="twitterEmail">Email</label>
+          <input type="email" id="twitterEmail" placeholder="your_email@gmail.com" required>
+        </div>
+        <div class="input-group">
+          <label for="twitterPassword">Password</label>
+          <input type="password" id="twitterPassword" placeholder="your_password" required>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>🔍 Search & Filter Configuration</h3>
+        <div class="input-group">
+          <label for="requiredKeywords">Search Keywords</label>
+          <input type="text" id="requiredKeywords" placeholder="pump, sol, launch, pump.fun" required>
+          <small>Keywords to search for on Twitter (comma-separated)</small>
+        </div>
+        <div class="input-group">
+          <label for="optionalKeywords">Required Post Keywords</label>
+          <input type="text" id="optionalKeywords" placeholder="coming soon, launching soon">
+          <small>Posts must contain these phrases to be sent to Telegram</small>
+        </div>
+        <div class="input-group">
+          <label>Contract Address Detection</label>
+          <input type="text" value="Solana addresses (hardcoded)" disabled>
+          <small>Automatically detects and extracts Solana contract addresses</small>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>⚙️ Backend Configuration</h3>
+        <div class="input-group">
+          <label for="backendUrl">Backend URL</label>
+          <input type="text" id="backendUrl" value="http://localhost:5000" placeholder="http://localhost:5000">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn primary">💾 Save Configuration</button>
+        <button type="button" id="manualScrape" class="btn secondary">🔄 Start Manual Scrape</button>
+        <div class="toggle-container">
+          <label class="toggle-label">
+            <input type="checkbox" id="automationToggle">
+            <span class="toggle-slider"></span>
+            <span class="toggle-text">🤖 Auto Scraping</span>
+          </label>
+        </div>
+      </div>
+    </form>
+
+    <div class="logs">
+      <h4>📋 Activity Log</h4>
+      <div id="logContainer" class="log-container">
+        <div class="log-item">Firefox extension loaded successfully</div>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

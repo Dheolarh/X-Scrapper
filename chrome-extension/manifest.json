@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Web3X",
+  "version": "1.0.0",
+  "description": "Control your Twitter crypto scraping backend from Chrome",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "http://localhost:*/*",
+    "http://127.0.0.1:*/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Web3X",
+    "default_icon": {
+      "16": "icons/Web3X.png",
+      "32": "icons/Web3X.png",
+      "48": "icons/Web3X.png",
+      "128": "icons/Web3X.png"
+    }
+  },
+  "icons": {
+    "16": "icons/Web3X.png",
+    "32": "icons/Web3X.png",
+    "48": "icons/Web3X.png",
+    "128": "icons/Web3X.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
