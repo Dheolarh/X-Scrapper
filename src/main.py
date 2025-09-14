@@ -27,8 +27,17 @@ def format_message(item: Dict) -> str:
         import re
         # Try to parse ISO format datetime if available
         if 'T' in timestamp and 'Z' in timestamp:
-            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-            formatted_time = dt.strftime("%B %d, %Y at %I:%M %p UTC")
+            # Parse UTC time
+            dt_utc = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            # Convert to local time
+            import time
+            local_offset = time.timezone if time.daylight == 0 else time.altzone
+            local_offset_hours = -local_offset // 3600
+            
+            # Adjust for local timezone
+            from datetime import timedelta
+            dt_local = dt_utc + timedelta(hours=local_offset_hours)
+            formatted_time = dt_local.strftime("%B %d, %Y at %I:%M %p")
     except Exception:
         pass  # Keep original timestamp if parsing fails
     
@@ -70,7 +79,13 @@ def format_message(item: Dict) -> str:
 
 
 
-def single_run(cfg: Config) -> int:
+def single_run(cfg: Config, return_results: bool = False):
+    """Run a single scraping cycle. 
+    
+    Args:
+        cfg: Configuration object
+        return_results: If True, returns (sent_count, results_list), otherwise just sent_count
+    """
     print("[main] Loading state...")
     state = load_state(cfg.state_path)
     last_id = state.get("last_tweet_id")
@@ -129,6 +144,9 @@ def single_run(cfg: Config) -> int:
             "seen_mints": sorted(seen_mints),
         })
         print(f"[main] Done. Sent {sent} messages.")
+        
+        if return_results:
+            return sent, new_items
         return sent
     finally:
         print("[main] Stopping TwitterWatcher...")

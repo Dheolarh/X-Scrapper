@@ -21,6 +21,7 @@ automation_enabled = False
 automation_thread = None
 current_config = None
 scrape_running = False
+latest_results = []  # Store latest scraping results
 
 # Cleanup function for graceful shutdown
 def cleanup_and_exit():
@@ -127,7 +128,7 @@ class APIConfig:
 
 def automation_worker():
     """Background worker for automation mode"""
-    global automation_enabled, scrape_running, current_config
+    global automation_enabled, scrape_running, current_config, latest_results
     
     while automation_enabled:
         if current_config and not scrape_running:
@@ -135,8 +136,10 @@ def automation_worker():
                 scrape_running = True
                 add_activity_event("🤖 Running automated scrape...", "info")
                 print("[API] Running automated scrape...")
-                result = single_run(current_config.config)
-                add_activity_event(f"✅ Automated scrape completed - sent {result} messages", "success")
+                result = single_run(current_config.config, return_results=True)
+                sent_count, results = result if isinstance(result, tuple) else (result, [])
+                latest_results[:] = results  # Update global results
+                add_activity_event(f"✅ Automated scrape completed - sent {sent_count} messages", "success")
                 print("[API] Automated scrape completed")
             except Exception as e:
                 add_activity_event(f"❌ Automated scrape failed: {str(e)}", "error")
@@ -225,6 +228,20 @@ def get_config():
             return jsonify({'config': config_data})
         else:
             return jsonify({'config': None})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/results', methods=['GET'])
+def get_results():
+    """Get latest scraping results"""
+    global latest_results
+    try:
+        return jsonify({
+            'status': 'success',
+            'results': latest_results,
+            'count': len(latest_results),
+            'timestamp': time.time()
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -330,7 +347,7 @@ def validate_credentials():
 @app.route('/api/scrape', methods=['POST'])
 def start_manual_scrape():
     """Start manual scrape operation"""
-    global current_config, scrape_running
+    global current_config, scrape_running, latest_results
     
     try:
         if scrape_running:
@@ -368,11 +385,13 @@ def start_manual_scrape():
                 add_activity_event("🔍 Searching for tweets with configured keywords...", "info")
                 
                 print("[API] Starting manual scrape...")
-                result = single_run(current_config.config)
+                result = single_run(current_config.config, return_results=True)
+                sent_count, results = result if isinstance(result, tuple) else (result, [])
+                latest_results[:] = results  # Update global results
                 
                 add_activity_event(f"✅ Manual scrape completed successfully", "success")
-                add_activity_event(f"📊 Found and sent {result} new messages to Telegram", "success")
-                print(f"[API] Manual scrape completed. Sent {result} messages.")
+                add_activity_event(f"📊 Found and sent {sent_count} new messages to Telegram", "success")
+                print(f"[API] Manual scrape completed. Sent {sent_count} messages.")
             except Exception as e:
                 add_activity_event(f"❌ Manual scrape failed: {str(e)}", "error")
                 print(f"[API] Manual scrape error: {e}")

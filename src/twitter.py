@@ -523,25 +523,46 @@ class TwitterWatcher:
                     comments = "0"
                     reposts = "0"
                     try:
-                        # Twitter engagement buttons are usually in a specific group
-                        engagement_buttons = art.find_elements(By.CSS_SELECTOR, 'div[role="group"] button')
+                        # Try multiple selectors for engagement buttons
+                        engagement_selectors = [
+                            'div[role="group"] button',
+                            'div[role="group"] div[role="button"]',
+                            '[data-testid="like"]',
+                            '[data-testid="reply"]',
+                            '[data-testid="retweet"]'
+                        ]
+                        
+                        engagement_buttons = []
+                        for selector in engagement_selectors:
+                            try:
+                                buttons = art.find_elements(By.CSS_SELECTOR, selector)
+                                engagement_buttons.extend(buttons)
+                            except Exception:
+                                continue
+                        
                         for button in engagement_buttons:
-                            aria_label = button.get_attribute('aria-label') or ""
-                            # Parse engagement counts from aria-labels
-                            if 'like' in aria_label.lower():
-                                # Extract number from "123 likes" or similar
+                            try:
+                                aria_label = button.get_attribute('aria-label') or ""
+                                button_text = button.text or ""
+                                
+                                # Parse engagement counts from aria-labels and text
                                 import re
-                                match = re.search(r'(\d+)', aria_label)
-                                if match:
-                                    likes = match.group(1)
-                            elif 'repl' in aria_label.lower() or 'comment' in aria_label.lower():
-                                match = re.search(r'(\d+)', aria_label)
-                                if match:
-                                    comments = match.group(1)
-                            elif 'repost' in aria_label.lower() or 'retweet' in aria_label.lower():
-                                match = re.search(r'(\d+)', aria_label)
-                                if match:
-                                    reposts = match.group(1)
+                                combined_text = (aria_label + " " + button_text).lower()
+                                
+                                if any(word in combined_text for word in ['like', 'heart']):
+                                    match = re.search(r'(\d+)', combined_text)
+                                    if match:
+                                        likes = match.group(1)
+                                elif any(word in combined_text for word in ['repl', 'comment']):
+                                    match = re.search(r'(\d+)', combined_text)
+                                    if match:
+                                        comments = match.group(1)
+                                elif any(word in combined_text for word in ['repost', 'retweet', 'share']):
+                                    match = re.search(r'(\d+)', combined_text)
+                                    if match:
+                                        reposts = match.group(1)
+                            except Exception:
+                                continue
                     except Exception:
                         pass
                     
