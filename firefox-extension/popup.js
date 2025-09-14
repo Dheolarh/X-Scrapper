@@ -343,14 +343,14 @@ class CryptoScraperUI {
       
       if (isOnline) {
         statusDot.className = 'status-dot online';
-        statusText.textContent = 'Backend Online';
+        statusText.textContent = 'Online';
       } else {
         statusDot.className = 'status-dot offline';
-        statusText.textContent = 'Backend Offline';
+        statusText.textContent = 'Offline';
       }
     } catch (error) {
       statusDot.className = 'status-dot offline';
-      statusText.textContent = 'Backend Offline';
+      statusText.textContent = 'Offline';
       console.error('Status check failed:', error);
     }
   }
