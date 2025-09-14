@@ -11,7 +11,7 @@ from selenium.common.exceptions import TimeoutException
 
 from .config import Config
 from . import session as sess
-from .detect import extract_candidates, contains_launch_phrase, has_contact_address
+from .detect import extract_candidates, contains_launch_phrase, has_contact_address, get_launch_phrases
 
 TWEET_SELECTOR = 'article[data-testid="tweet"]'
 TWEET_TEXT_SELECTOR = 'div[data-testid="tweetText"]'
@@ -25,10 +25,16 @@ class TwitterWatcher:
 
     def _build_driver(self):
         print("[twitter] Building Chrome driver...")
+        import os  # Import os at the beginning
         opts = uc.ChromeOptions()
         
+        # Specify Chrome binary path explicitly
+        chrome_binary = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+        if os.path.exists(chrome_binary):
+            opts.binary_location = chrome_binary
+            print(f"[twitter] Using Chrome binary: {chrome_binary}")
+        
         # Use persistent user data directory to maintain sessions
-        import os
         os.makedirs(self.cfg.user_data_dir, exist_ok=True)
         opts.add_argument(f"--user-data-dir={os.path.abspath(self.cfg.user_data_dir)}")
         print(f"[twitter] Using user data directory: {os.path.abspath(self.cfg.user_data_dir)}")
@@ -40,7 +46,21 @@ class TwitterWatcher:
         opts.add_argument("--disable-extensions")
         opts.add_argument("--disable-plugins")
         opts.add_argument("--disable-blink-features=AutomationControlled")
-        opts.add_argument("--remote-debugging-port=9222")
+        
+        # Add more stable options for better reliability
+        opts.add_argument("--disable-background-timer-throttling")
+        opts.add_argument("--disable-backgrounding-occluded-windows")
+        opts.add_argument("--disable-renderer-backgrounding")
+        opts.add_argument("--disable-features=TranslateUI")
+        opts.add_argument("--disable-ipc-flooding-protection")
+        opts.add_argument("--no-first-run")
+        opts.add_argument("--no-default-browser-check")
+        
+        # Set page load strategy for faster loading
+        opts.page_load_strategy = 'eager'  # Don't wait for all resources
+        
+        # Remove conflicting remote debugging port
+        # opts.add_argument("--remote-debugging-port=9222")
         opts.add_argument("--window-size=1920,1080")
         
         if self.cfg.headless:
@@ -53,13 +73,30 @@ class TwitterWatcher:
         if self.cfg.user_agent:
             opts.add_argument(f"--user-agent={self.cfg.user_agent}")
         else:
-            # Default user agent for cloud instances
-            opts.add_argument("--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            # Default user agent for Windows
+            opts.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             
-        self.driver = uc.Chrome(options=opts)
-        self.driver.set_page_load_timeout(self.cfg.page_load_timeout)
-        self.driver.implicitly_wait(self.cfg.implicit_wait)
-        print("[twitter] Chrome driver ready with persistent session.")
+        try:
+            self.driver = uc.Chrome(options=opts)
+            # Set more reasonable timeouts
+            self.driver.set_page_load_timeout(30)  # Reduced from default
+            self.driver.implicitly_wait(self.cfg.implicit_wait)
+            print("[twitter] Chrome driver ready with persistent session.")
+        except Exception as e:
+            print(f"[twitter] Failed to create Chrome driver: {e}")
+            # Try with simpler options as fallback
+            opts = uc.ChromeOptions()
+            opts.add_argument("--no-sandbox")
+            opts.add_argument("--disable-dev-shm-usage")
+            if chrome_binary and os.path.exists(chrome_binary):
+                opts.binary_location = chrome_binary
+            try:
+                self.driver = uc.Chrome(options=opts)
+                self.driver.set_page_load_timeout(30)
+                print("[twitter] Chrome driver created with fallback options.")
+            except Exception as fallback_error:
+                print(f"[twitter] Fallback Chrome driver creation also failed: {fallback_error}")
+                raise
 
     def _jitter(self, a=0.5, b=1.4):
         time.sleep(random.uniform(a, b))
@@ -81,8 +118,31 @@ class TwitterWatcher:
         assert self.driver is not None
         print("[twitter] Checking if already logged in...")
         
-        # First, try to go directly to home to check login status
-        self.driver.get("https://x.com/home")
+        # Try to navigate to Twitter with retry logic
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                print(f"[twitter] Attempt {attempt + 1}/{max_retries} to load Twitter...")
+                # First, try to go directly to home to check login status
+                self.driver.get("https://x.com/home")
+                print("[twitter] Successfully loaded Twitter homepage")
+                break
+            except Exception as e:
+                print(f"[twitter] Attempt {attempt + 1} failed: {e}")
+                if attempt == max_retries - 1:
+                    print("[twitter] All attempts failed. Trying simple approach...")
+                    try:
+                        # Last resort: try with a shorter timeout
+                        self.driver.set_page_load_timeout(15)
+                        self.driver.get("https://x.com")
+                        time.sleep(5)
+                        print("[twitter] Loaded basic Twitter page as fallback")
+                    except Exception as final_error:
+                        print(f"[twitter] Final attempt also failed: {final_error}")
+                        raise
+                else:
+                    time.sleep(3)  # Wait before retry
+        
         time.sleep(3)
         
         # Check if we're already logged in by looking for home page elements
@@ -95,9 +155,15 @@ class TwitterWatcher:
         # Wait 20 seconds as requested before search
         print("[twitter] Waiting 20 seconds before performing search...")
         time.sleep(20)
+
+        # Generate search URL dynamically from search query instead of using cached URL
+        search_query = self.cfg.search_query
+        from urllib.parse import quote_plus
+        encoded_query = quote_plus(search_query)
+        dynamic_search_url = f"https://x.com/search?q={encoded_query}&f=live"
         
         # Now proceed with search
-        print(f"[twitter] Now navigating to search URL: {self.cfg.search_url}")
+        print(f"[twitter] Now navigating to search URL: {dynamic_search_url}")
         search_load_attempts = 0
         max_search_load_attempts = 3
         
@@ -105,7 +171,7 @@ class TwitterWatcher:
             search_load_attempts += 1
             print(f"[twitter] Loading search page (attempt {search_load_attempts}/{max_search_load_attempts})")
             
-            self.driver.get(self.cfg.search_url)
+            self.driver.get(dynamic_search_url)
             try:
                 WebDriverWait(self.driver, self.cfg.explicit_wait).until(
                     EC.visibility_of_element_located((By.CSS_SELECTOR, TWEET_SELECTOR))
@@ -291,6 +357,83 @@ class TwitterWatcher:
             print(f"[twitter] Login automation failed: {e}")
             raise Exception(f"[twitter] Login failed: {e}")
 
+    def collect_tweets_multi_feed(self, max_count_per_feed: int = 20) -> List[Dict[str, Any]]:
+        """Collect tweets from multiple feeds: Latest, Top, and Homepage"""
+        assert self.driver is not None
+        all_tweets = []
+        
+        # Get the search query from config
+        search_query = self.cfg.search_query
+        from urllib.parse import quote_plus
+        encoded_query = quote_plus(search_query)
+        
+        feeds = [
+            {
+                "name": "Latest/Live Feed", 
+                "url": f"https://x.com/search?q={encoded_query}&f=live",
+                "description": "Most recent tweets with your search query"
+            },
+            {
+                "name": "Top Feed", 
+                "url": f"https://x.com/search?q={encoded_query}",
+                "description": "Popular/trending tweets with your search query"
+            },
+            {
+                "name": "Homepage Feed", 
+                "url": "https://x.com/home",
+                "description": "Your personalized timeline"
+            }
+        ]
+        
+        for i, feed in enumerate(feeds, 1):
+            print(f"\n[twitter] === FEED {i}/3: {feed['name']} ===")
+            print(f"[twitter] {feed['description']}")
+            print(f"[twitter] URL: {feed['url']}")
+            
+            try:
+                # Navigate to the feed
+                print(f"[twitter] Loading {feed['name']}...")
+                self.driver.get(feed['url'])
+                time.sleep(5)  # Wait for page to load
+                
+                # Wait for tweets to appear
+                try:
+                    WebDriverWait(self.driver, 15).until(
+                        EC.visibility_of_element_located((By.CSS_SELECTOR, TWEET_SELECTOR))
+                    )
+                    print(f"[twitter] {feed['name']} loaded successfully")
+                except TimeoutException:
+                    print(f"[twitter] No tweets found in {feed['name']}, skipping...")
+                    continue
+                
+                # Collect tweets from this feed
+                feed_tweets = self.collect_tweets(max_count=max_count_per_feed)
+                print(f"[twitter] Collected {len(feed_tweets)} tweets from {feed['name']}")
+                
+                # Add feed info to each tweet
+                for tweet in feed_tweets:
+                    tweet['feed_source'] = feed['name']
+                    tweet['feed_url'] = feed['url']
+                
+                all_tweets.extend(feed_tweets)
+                
+                # Short break between feeds
+                if i < len(feeds):
+                    print(f"[twitter] Waiting 3 seconds before next feed...")
+                    time.sleep(3)
+                    
+            except Exception as e:
+                print(f"[twitter] Error collecting from {feed['name']}: {e}")
+                continue
+        
+        print(f"\n[twitter] === MULTI-FEED COLLECTION COMPLETE ===")
+        print(f"[twitter] Total tweets collected: {len(all_tweets)}")
+        for feed in feeds:
+            feed_count = len([t for t in all_tweets if t.get('feed_source') == feed['name']])
+            print(f"[twitter] - {feed['name']}: {feed_count} tweets")
+        
+        return all_tweets
+
     def collect_tweets(self, max_count: int = 40) -> List[Dict[str, Any]]:
         assert self.driver is not None
         print(f"[twitter] Collecting up to {max_count} tweets...")
@@ -355,10 +498,62 @@ class TwitterWatcher:
                     except Exception:
                         pass
                     
+                    # Extract timestamp
+                    timestamp = "Unknown Time"
+                    try:
+                        time_element = art.find_element(By.CSS_SELECTOR, TIME_SELECTOR)
+                        timestamp = time_element.get_attribute("datetime") or time_element.get_attribute("title") or time_element.text
+                    except Exception:
+                        pass
+                    
+                    # Extract post URL
+                    post_url = "Unknown URL"
+                    try:
+                        # Look for the permalink to the tweet
+                        time_link = art.find_element(By.CSS_SELECTOR, 'time').find_element(By.XPATH, '..')
+                        if time_link.tag_name == 'a':
+                            href = time_link.get_attribute('href')
+                            if href:
+                                post_url = href
+                    except Exception:
+                        pass
+                    
+                    # Extract engagement metrics (likes, comments, reposts)
+                    likes = "0"
+                    comments = "0"
+                    reposts = "0"
+                    try:
+                        # Twitter engagement buttons are usually in a specific group
+                        engagement_buttons = art.find_elements(By.CSS_SELECTOR, 'div[role="group"] button')
+                        for button in engagement_buttons:
+                            aria_label = button.get_attribute('aria-label') or ""
+                            # Parse engagement counts from aria-labels
+                            if 'like' in aria_label.lower():
+                                # Extract number from "123 likes" or similar
+                                import re
+                                match = re.search(r'(\d+)', aria_label)
+                                if match:
+                                    likes = match.group(1)
+                            elif 'repl' in aria_label.lower() or 'comment' in aria_label.lower():
+                                match = re.search(r'(\d+)', aria_label)
+                                if match:
+                                    comments = match.group(1)
+                            elif 'repost' in aria_label.lower() or 'retweet' in aria_label.lower():
+                                match = re.search(r'(\d+)', aria_label)
+                                if match:
+                                    reposts = match.group(1)
+                    except Exception:
+                        pass
+                    
                     results.append({
                         "id": tid,
                         "text": text,
                         "username": username,
+                        "timestamp": timestamp,
+                        "post_url": post_url,
+                        "likes": likes,
+                        "comments": comments,
+                        "reposts": reposts,
                     })
                 except Exception:
                     continue
@@ -399,18 +594,42 @@ class TwitterWatcher:
         for t in tweets:
             text = t.get("text", "")
             
-            # STRICT REQUIREMENT: Must have BOTH "coming soon" AND contract address
-            if not contains_launch_phrase(text):
+            # Check for contract address only if required
+            if self.cfg.contact_address_required and not has_contact_address(text):
                 continue
-            if not has_contact_address(text):
-                continue
+                
+            # Check for launch phrases only if keywords are configured
+            launch_phrases = get_launch_phrases()
+            if launch_phrases and len(launch_phrases) > 0:
+                # If launch phrases are configured, require them
+                if not contains_launch_phrase(text):
+                    continue
+            # If no launch phrases configured, skip this filter
                 
             addrs, links = extract_candidates(text)
             matches.append({
                 "id": t.get("id"), 
                 "text": text, 
                 "username": t.get("username", "Unknown User"),
+                "timestamp": t.get("timestamp", "Unknown Time"),
+                "post_url": t.get("post_url", "Unknown URL"),
+                "likes": t.get("likes", "0"),
+                "comments": t.get("comments", "0"),
+                "reposts": t.get("reposts", "0"),
+                "feed_source": t.get("feed_source", "Unknown Feed"),
+                "feed_url": t.get("feed_url", ""),
                 "mints": list(set(addrs + links))
             })
-        print(f"[twitter] Found {len(matches)} matches with both 'coming soon' and contract address.")
+        
+        # Update the log message based on filtering criteria
+        filter_msg = []
+        if get_launch_phrases():
+            filter_msg.append("launch keywords")
+        if self.cfg.contact_address_required:
+            filter_msg.append("contract address")
+        
+        if filter_msg:
+            print(f"[twitter] Found {len(matches)} matches with {' and '.join(filter_msg)}.")
+        else:
+            print(f"[twitter] Found {len(matches)} matches with contract address (no keyword filter).")
         return matches

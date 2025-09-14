@@ -14,11 +14,11 @@ DEFAULT_LAUNCH_PHRASES = (
 )
 
 def get_launch_phrases():
-    """Get launch phrases from environment or use defaults"""
+    """Get launch phrases from environment or return empty list if none configured"""
     env_keywords = os.getenv('REQUIRED_POST_KEYWORDS')
-    if env_keywords:
+    if env_keywords and env_keywords.strip():
         return [phrase.strip().lower() for phrase in env_keywords.split(',') if phrase.strip()]
-    return DEFAULT_LAUNCH_PHRASES
+    return []  # Return empty list instead of defaults if not configured
 
 
 def extract_candidates(text: str) -> Tuple[List[str], List[str]]:

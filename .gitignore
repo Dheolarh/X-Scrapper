@@ -1,6 +1,8 @@
 # Envs
 .venv/
 .env
+
+# JSON
 *.json
 
 # Python
